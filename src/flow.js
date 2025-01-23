@@ -30,11 +30,11 @@ export const getNextScreen = async (decryptedBody) => {
     version,
   });
 
-  // Handle health check
-  if (action === "health_check") {
+  // handle health check request
+  if (action === "ping") {
     return {
       data: {
-        status: "healthy",
+        status: "active",
       },
     };
   }
