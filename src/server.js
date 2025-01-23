@@ -1,10 +1,3 @@
-/**
- * Copyright (c) Meta Platforms, Inc. and affiliates.
- *
- * This source code is licensed under the MIT license found in the
- * LICENSE file in the root directory of this source tree.
- */
-
 import express from "express";
 import {
   decryptRequest,
@@ -12,29 +5,49 @@ import {
   FlowEndpointException,
 } from "./encryption.js";
 import { getNextScreen } from "./flow.js";
+import { MongoClient, ServerApiVersion } from "mongodb";
 import crypto from "crypto";
+import dotenv from "dotenv";
+import { connectToDatabase } from "./db.js";
+
+dotenv.config();
 
 const app = express();
+const {
+  APP_SECRET,
+  PRIVATE_KEY,
+  PASSPHRASE = "",
+  PORT = "3000",
+  MONGODB_URI,
+} = process.env;
+
+// MongoDB Connection
+const client = new MongoClient(MONGODB_URI, {
+  serverApi: {
+    version: ServerApiVersion.v1,
+    strict: true,
+    deprecationErrors: true,
+  },
+});
+
+// Connect to MongoDB when the server starts
+connectToDatabase()
+  .then(() => {
+    console.log("MongoDB connection established successfully.");
+  })
+  .catch((error) => {
+    console.error("Failed to connect to MongoDB:", error.message);
+    process.exit(1); // Exit the process if the connection fails
+  });
 
 app.use(
   express.json({
-    // store the raw request body to use it for signature verification
+    // Store the raw request body to use it for signature verification
     verify: (req, res, buf, encoding) => {
       req.rawBody = buf?.toString(encoding || "utf8");
     },
   })
 );
-
-const { APP_SECRET, PRIVATE_KEY, PASSPHRASE = "", PORT = "3000" } = process.env;
-
-/*
-Example:
-```-----[REPLACE THIS] BEGIN RSA PRIVATE KEY-----
-MIIE...
-...
-...AQAB
------[REPLACE THIS] END RSA PRIVATE KEY-----```
-*/
 
 app.post("/", async (req, res) => {
   if (!PRIVATE_KEY) {
@@ -44,9 +57,7 @@ app.post("/", async (req, res) => {
   }
 
   if (!isRequestSignatureValid(req)) {
-    // Return status code 432 if request signature does not match.
-    // To learn more about return error codes visit: https://developers.facebook.com/docs/whatsapp/flows/reference/error-codes#endpoint_error_codes
-    return res.status(432).send();
+    return res.status(432).send(); // Return status code 432 if request signature does not match
   }
 
   let decryptedRequest = null;
@@ -63,27 +74,62 @@ app.post("/", async (req, res) => {
   const { aesKeyBuffer, initialVectorBuffer, decryptedBody } = decryptedRequest;
   console.log("💬 Decrypted Request:", decryptedBody);
 
-  // TODO: Uncomment this block and add your flow token validation logic.
-  // If the flow token becomes invalid, return HTTP code 427 to disable the flow and show the message in `error_msg` to the user
-  // Refer to the docs for details https://developers.facebook.com/docs/whatsapp/flows/reference/error-codes#endpoint_error_codes
+  try {
+    // Database Logic
+    if (
+      decryptedBody.action === "data_exchange" &&
+      decryptedBody.screen === "SCHEDULE"
+    ) {
+      await client.connect();
+      const database = client.db("appointments");
+      const appointmentsCollection = database.collection("appointments");
 
-  /*
-  if (!isValidFlowToken(decryptedBody.flow_token)) {
-    const error_response = {
-      error_msg: `The message is no longer available`,
-    };
-    return res
-      .status(427)
-      .send(
-        encryptResponse(error_response, aesKeyBuffer, initialVectorBuffer)
+      const appointmentData = {
+        appointment_type: decryptedBody.data.appointment_type,
+        gender: decryptedBody.data.gender,
+        appointment_date: decryptedBody.data.appointment_date,
+        appointment_time: decryptedBody.data.appointment_time,
+        notes: decryptedBody.data.notes || "No additional notes",
+        created_at: new Date(),
+        flow_token: decryptedBody.flow_token,
+        status: "pending",
+      };
+
+      await appointmentsCollection.insertOne(appointmentData);
+      console.log("Appointment saved:", appointmentData);
+
+      const successResponse = {
+        screen: "SUCCESS",
+        data: {
+          extension_message_response: {
+            params: {
+              flow_token: decryptedBody.flow_token,
+              appointment_confirmed: true,
+              message: `Appointment scheduled for ${appointmentData.appointment_date} at ${appointmentData.appointment_time}`,
+            },
+          },
+        },
+      };
+
+      return res.send(
+        encryptResponse(successResponse, aesKeyBuffer, initialVectorBuffer)
       );
+    }
+
+    // Handle other actions
+    const fallbackResponse = {
+      screen: "SCHEDULE",
+      data: {},
+    };
+    return res.send(
+      encryptResponse(fallbackResponse, aesKeyBuffer, initialVectorBuffer)
+    );
+  } catch (error) {
+    console.error("Processing error:", error);
+    return res.status(500).send();
+  } finally {
+    await client.close();
   }
-  */
-
-  const screenResponse = await getNextScreen(decryptedBody);
-  console.log("👉 Response to Encrypt:", screenResponse);
-
-  res.send(encryptResponse(screenResponse, aesKeyBuffer, initialVectorBuffer));
 });
 
 app.get("/", (req, res) => {
