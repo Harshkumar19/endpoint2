@@ -1,6 +1,6 @@
 // flow.js
 
-import { getDb } from "./db.js";
+// import { getDb } from "./db.js";
 
 const SCREEN_RESPONSES = {
   SCHEDULE: {
@@ -40,10 +40,10 @@ const SCREEN_RESPONSES = {
 };
 
 export const getNextScreen = async (decryptedBody) => {
-  // const getDb = async () => {
-  //   const dbModule = await import("./db.js");
-  //   return dbModule.getDb();
-  // };
+  const getDb = async () => {
+    const dbModule = await import("./db.js");
+    return dbModule.getDb();
+  };
 
   const { screen, data, version, action, flow_token } = decryptedBody;
 
