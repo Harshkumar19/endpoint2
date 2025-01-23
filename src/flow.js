@@ -1,5 +1,7 @@
 // flow.js
 
+// import { getDb } from "./db.js";
+
 const SCREEN_RESPONSES = {
   SCHEDULE: {
     screen: "SCHEDULE",
@@ -37,6 +39,11 @@ const SCREEN_RESPONSES = {
   },
 };
 
+const getDb = async () => {
+  const dbModule = await import("./db.js");
+  return dbModule.getDb();
+};
+
 export const getNextScreen = async (decryptedBody) => {
   const { screen, data, version, action, flow_token } = decryptedBody;
 
@@ -70,7 +77,7 @@ export const getNextScreen = async (decryptedBody) => {
     switch (screen) {
       case "SCHEDULE":
         try {
-          const db = getDb();
+          const db = await getDb();
           const appointmentsCollection = db.collection("appointments");
 
           // Map time slot to actual time
