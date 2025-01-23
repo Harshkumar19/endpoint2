@@ -1,10 +1,8 @@
 import { MongoClient, ServerApiVersion } from "mongodb";
 import dotenv from "dotenv";
 
-// Ensure environment variables are loaded
 dotenv.config();
 
-// Validate MongoDB URI
 const uri = process.env.MONGODB_URI;
 if (!uri) {
   console.error("MONGODB_URI is not set in environment variables");
@@ -44,5 +42,3 @@ export const getDb = () => {
   }
   return dbConnection;
 };
-
-export default client;

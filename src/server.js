@@ -1,31 +1,14 @@
 import express from "express";
-import { MongoClient, ServerApiVersion } from "mongodb";
 import crypto from "crypto";
+import dotenv from "dotenv";
+import { connectToDatabase } from "./db.js";
+
+dotenv.config();
 
 const app = express();
-const {
-  APP_SECRET,
-  PRIVATE_KEY,
-  PASSPHRASE = "",
-  PORT = "3000",
-  MONGODB_URI = "mongodb+srv://karanvishwakarma732:qG4teTOnH2KbT6iH@cluster0.t0bbl.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0",
-} = process.env;
+const { APP_SECRET, PRIVATE_KEY, PORT = "3000" } = process.env;
 
-// Ensure MONGODB_URI is properly defined
-if (!MONGODB_URI) {
-  console.error("MongoDB URI is not set in environment variables");
-  process.exit(1);
-}
-
-// MongoDB Connection
-const client = new MongoClient(MONGODB_URI, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true,
-  },
-});
-
+// Middleware for parsing JSON and capturing raw body
 app.use(
   express.json({
     verify: (req, res, buf, encoding) => {
@@ -42,6 +25,11 @@ function isRequestSignatureValid(req) {
   }
 
   const signatureHeader = req.get("x-hub-signature-256");
+  if (!signatureHeader) {
+    console.warn("Missing x-hub-signature-256 header.");
+    return false;
+  }
+
   const signatureBuffer = Buffer.from(
     signatureHeader.replace("sha256=", ""),
     "utf-8"
@@ -65,17 +53,14 @@ app.post("/", async (req, res) => {
   }
 
   try {
-    // Parse request body (replace with your decryption logic if needed)
     const decryptedBody = JSON.parse(req.rawBody);
 
-    // Database Logic
     if (
       decryptedBody.action === "data_exchange" &&
       decryptedBody.screen === "SCHEDULE"
     ) {
-      await client.connect();
-      const database = client.db("appointments");
-      const appointmentsCollection = database.collection("appointments");
+      const db = await connectToDatabase(); // Ensure MongoDB is connected
+      const appointmentsCollection = db.collection("appointments");
 
       const appointmentData = {
         appointment_type: decryptedBody.data.appointment_type,
@@ -91,7 +76,6 @@ app.post("/", async (req, res) => {
       await appointmentsCollection.insertOne(appointmentData);
       console.log("Appointment saved:", appointmentData);
 
-      // Prepare response
       return res.send({
         screen: "SUCCESS",
         data: {
@@ -106,7 +90,6 @@ app.post("/", async (req, res) => {
       });
     }
 
-    // Handle other actions
     return res.send({
       screen: "SCHEDULE",
       data: {},
@@ -114,15 +97,48 @@ app.post("/", async (req, res) => {
   } catch (error) {
     console.error("Processing error:", error);
     return res.status(500).send();
-  } finally {
-    await client.close();
   }
 });
 
-app.get("/", (req, res) => {
-  res.send("Appointment Booking Service");
+app.get("/", async (req, res) => {
+  try {
+    const db = await connectToDatabase();
+    const isConnected = db
+      ? "Connected to MongoDB!"
+      : "Not connected to MongoDB";
+    res.send(`Appointment Booking Service - ${isConnected}`);
+  } catch (error) {
+    res.send("Appointment Booking Service - MongoDB connection failed.");
+  }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
-});
+// Connect to MongoDB and insert dummy data
+connectToDatabase()
+  .then(async (db) => {
+    console.log("MongoDB connection established successfully.");
+
+    // Create dummy data
+    const appointmentsCollection = db.collection("appointments");
+    const dummyData = {
+      appointment_type: "online",
+      gender: "female",
+      appointment_date: "2023-10-01",
+      appointment_time: "10:00 AM",
+      notes: "Initial dummy appointment",
+      created_at: new Date(),
+      flow_token: "dummy_flow_token",
+      status: "pending",
+    };
+
+    // Insert dummy data
+    await appointmentsCollection.insertOne(dummyData);
+    console.log("Dummy appointment data inserted:", dummyData);
+
+    app.listen(PORT, () => {
+      console.log(`Server listening on port ${PORT}`);
+    });
+  })
+  .catch((error) => {
+    console.error("Failed to connect to MongoDB:", error.message);
+    process.exit(1); // Exit the process if the connection fails
+  });
