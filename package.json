@@ -10,8 +10,10 @@
   "author": "WhatsApp Flows Team",
   "license": "MIT",
   "dependencies": {
+    "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "github": "^14.0.0"
+    "github": "^14.0.0",
+    "mongodb": "^6.12.0"
   },
   "engines": {
     "node": ">=16.0.0"
