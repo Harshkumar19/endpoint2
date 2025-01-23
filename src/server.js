@@ -8,7 +8,7 @@ import { getNextScreen } from "./flow.js";
 import { MongoClient, ServerApiVersion } from "mongodb";
 import crypto from "crypto";
 import dotenv from "dotenv";
-import { connectToDatabase } from "./db.js";
+// import { connectToDatabase } from "./db.js";
 
 dotenv.config();
 
@@ -29,6 +29,11 @@ const client = new MongoClient(MONGODB_URI, {
     deprecationErrors: true,
   },
 });
+
+const connectToDatabase = async () => {
+  const dbModule = await import("./db.js");
+  return dbModule.connectToDatabase();
+};
 
 // Connect to MongoDB when the server starts
 connectToDatabase()
