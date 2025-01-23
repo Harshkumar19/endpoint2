@@ -93,47 +93,6 @@ const SCREEN_RESPONSES = {
       is_time_enabled: true,
     },
   },
-  DETAILS: {
-    screen: "DETAILS",
-    data: {
-      department: "beauty",
-      location: "1",
-      date: "2024-01-01",
-      time: "11:30",
-    },
-  },
-  SUMMARY: {
-    screen: "SUMMARY",
-    data: {
-      appointment:
-        "Beauty & Personal Care Department at Kings Cross, London\nMon Jan 01 2024 at 11:30.",
-      details:
-        "Name: John Doe\nEmail: john@example.com\nPhone: 123456789\n\nA free skin care consultation, please",
-      department: "beauty",
-      location: "1",
-      date: "2024-01-01",
-      time: "11:30",
-      name: "John Doe",
-      email: "john@example.com",
-      phone: "123456789",
-      more_details: "A free skin care consultation, please",
-    },
-  },
-  TERMS: {
-    screen: "TERMS",
-    data: {},
-  },
-  SUCCESS: {
-    screen: "SUCCESS",
-    data: {
-      extension_message_response: {
-        params: {
-          flow_token: "REPLACE_FLOW_TOKEN",
-          some_param_name: "PASS_CUSTOM_VALUE",
-        },
-      },
-    },
-  },
 };
 
 export const getNextScreen = async (decryptedBody) => {
