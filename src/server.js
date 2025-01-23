@@ -79,62 +79,62 @@ app.post("/", async (req, res) => {
   const { aesKeyBuffer, initialVectorBuffer, decryptedBody } = decryptedRequest;
   console.log("💬 Decrypted Request:", decryptedBody);
 
-  try {
-    // Database Logic
-    if (
-      decryptedBody.action === "data_exchange" &&
-      decryptedBody.screen === "SCHEDULE"
-    ) {
-      await client.connect();
-      const database = client.db("appointments");
-      const appointmentsCollection = database.collection("appointments");
+  // try {
+  //   // Database Logic
+  //   if (
+  //     decryptedBody.action === "data_exchange" &&
+  //     decryptedBody.screen === "SCHEDULE"
+  //   ) {
+  //     await client.connect();
+  //     const database = client.db("appointments");
+  //     const appointmentsCollection = database.collection("appointments");
 
-      const appointmentData = {
-        appointment_type: decryptedBody.data.appointment_type,
-        gender: decryptedBody.data.gender,
-        appointment_date: decryptedBody.data.appointment_date,
-        appointment_time: decryptedBody.data.appointment_time,
-        notes: decryptedBody.data.notes || "No additional notes",
-        created_at: new Date(),
-        flow_token: decryptedBody.flow_token,
-        status: "pending",
-      };
+  //     const appointmentData = {
+  //       appointment_type: decryptedBody.data.appointment_type,
+  //       gender: decryptedBody.data.gender,
+  //       appointment_date: decryptedBody.data.appointment_date,
+  //       appointment_time: decryptedBody.data.appointment_time,
+  //       notes: decryptedBody.data.notes || "No additional notes",
+  //       created_at: new Date(),
+  //       flow_token: decryptedBody.flow_token,
+  //       status: "pending",
+  //     };
 
-      await appointmentsCollection.insertOne(appointmentData);
-      console.log("Appointment saved:", appointmentData);
+  //     await appointmentsCollection.insertOne(appointmentData);
+  //     console.log("Appointment saved:", appointmentData);
 
-      const successResponse = {
-        screen: "SUCCESS",
-        data: {
-          extension_message_response: {
-            params: {
-              flow_token: decryptedBody.flow_token,
-              appointment_confirmed: true,
-              message: `Appointment scheduled for ${appointmentData.appointment_date} at ${appointmentData.appointment_time}`,
-            },
-          },
-        },
-      };
+  //     const successResponse = {
+  //       screen: "SUCCESS",
+  //       data: {
+  //         extension_message_response: {
+  //           params: {
+  //             flow_token: decryptedBody.flow_token,
+  //             appointment_confirmed: true,
+  //             message: `Appointment scheduled for ${appointmentData.appointment_date} at ${appointmentData.appointment_time}`,
+  //           },
+  //         },
+  //       },
+  //     };
 
-      return res.send(
-        encryptResponse(successResponse, aesKeyBuffer, initialVectorBuffer)
-      );
-    }
+  //     return res.send(
+  //       encryptResponse(successResponse, aesKeyBuffer, initialVectorBuffer)
+  //     );
+  //   }
 
-    // Handle other actions
-    const fallbackResponse = {
-      screen: "SCHEDULE",
-      data: {},
-    };
-    return res.send(
-      encryptResponse(fallbackResponse, aesKeyBuffer, initialVectorBuffer)
-    );
-  } catch (error) {
-    console.error("Processing error:", error);
-    return res.status(500).send();
-  } finally {
-    await client.close();
-  }
+  //   // Handle other actions
+  //   const fallbackResponse = {
+  //     screen: "SCHEDULE",
+  //     data: {},
+  //   };
+  //   return res.send(
+  //     encryptResponse(fallbackResponse, aesKeyBuffer, initialVectorBuffer)
+  //   );
+  // } catch (error) {
+  //   console.error("Processing error:", error);
+  //   return res.status(500).send();
+  // } finally {
+  //   await client.close();
+  // }
 });
 
 app.get("/", (req, res) => {
@@ -143,14 +143,14 @@ Checkout README.md to start.</pre>`);
 });
 
 app.listen(PORT, () => {
-  console.log(`Server is listening on port: ${PORT}`);
+  // console.log(`Server is listening on port: ${PORT}`);
 });
 
 function isRequestSignatureValid(req) {
   if (!APP_SECRET) {
-    console.warn(
-      "App Secret is not set up. Please Add your app secret in /.env file to check for request validation"
-    );
+    // console.warn(
+    //   "App Secret is not set up. Please Add your app secret in /.env file to check for request validation"
+    // );
     return true;
   }
 
