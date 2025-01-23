@@ -1,3 +1,5 @@
+new flow();
+
 /**
  * Copyright (c) Meta Platforms, Inc. and affiliates.
  *
@@ -6,25 +8,6 @@
  */
 
 // this object is generated from Flow Builder under "..." > Endpoint > Snippets > Responses
-import { getDb } from "./db.js";
-
-const SCREEN_RESPONSES = {
-  SCHEDULE: {
-    screen: "SCHEDULE",
-    data: {},
-  },
-  SUCCESS: {
-    screen: "SUCCESS",
-    data: {
-      extension_message_response: {
-        params: {
-          flow_token: "REPLACE_FLOW_TOKEN",
-          some_param_name: "PASS_CUSTOM_VALUE",
-        },
-      },
-    },
-  },
-};
 
 export const getNextScreen = async (decryptedBody) => {
   const { screen, data, version, action, flow_token } = decryptedBody;
