@@ -1,28 +1,15 @@
 import express from "express";
-import {
-  decryptRequest,
-  encryptResponse,
-  FlowEndpointException,
-} from "./encryption.js";
-import { getNextScreen } from "./flow.js";
 import { MongoClient, ServerApiVersion } from "mongodb";
 import crypto from "crypto";
 import dotenv from "dotenv";
 import { connectToDatabase } from "./db.js";
-
 dotenv.config();
 
 const app = express();
-const {
-  APP_SECRET,
-  PRIVATE_KEY,
-  PASSPHRASE = "",
-  PORT = "3000",
-  MONGODB_URI,
-} = process.env;
+const { APP_SECRET, PRIVATE_KEY, PASSPHRASE = "", PORT = "3000" } = process.env;
 
 // MongoDB Connection
-const client = new MongoClient(MONGODB_URI, {
+const client = new MongoClient(process.env.MONGODB_URI, {
   serverApi: {
     version: ServerApiVersion.v1,
     strict: true,
@@ -42,39 +29,46 @@ connectToDatabase()
 
 app.use(
   express.json({
-    // Store the raw request body to use it for signature verification
     verify: (req, res, buf, encoding) => {
       req.rawBody = buf?.toString(encoding || "utf8");
     },
   })
 );
 
+// Request Signature Validation
+function isRequestSignatureValid(req) {
+  if (!APP_SECRET) {
+    console.warn("App Secret is not set up. Skipping signature validation.");
+    return true;
+  }
+
+  const signatureHeader = req.get("x-hub-signature-256");
+  const signatureBuffer = Buffer.from(
+    signatureHeader.replace("sha256=", ""),
+    "utf-8"
+  );
+
+  const hmac = crypto.createHmac("sha256", APP_SECRET);
+  const digestString = hmac.update(req.rawBody).digest("hex");
+  const digestBuffer = Buffer.from(digestString, "utf-8");
+
+  return crypto.timingSafeEqual(digestBuffer, signatureBuffer);
+}
+
+// Main Request Handler
 app.post("/", async (req, res) => {
   if (!PRIVATE_KEY) {
-    throw new Error(
-      'Private key is empty. Please check your env variable "PRIVATE_KEY".'
-    );
+    return res.status(500).send("Private key is missing");
   }
 
   if (!isRequestSignatureValid(req)) {
-    return res.status(432).send(); // Return status code 432 if request signature does not match
+    return res.status(432).send();
   }
 
-  let decryptedRequest = null;
   try {
-    decryptedRequest = decryptRequest(req.body, PRIVATE_KEY, PASSPHRASE);
-  } catch (err) {
-    console.error(err);
-    if (err instanceof FlowEndpointException) {
-      return res.status(err.statusCode).send();
-    }
-    return res.status(500).send();
-  }
+    // Decrypt request (you'll need to implement or import decryptRequest)
+    const decryptedBody = JSON.parse(req.rawBody);
 
-  const { aesKeyBuffer, initialVectorBuffer, decryptedBody } = decryptedRequest;
-  console.log("💬 Decrypted Request:", decryptedBody);
-
-  try {
     // Database Logic
     if (
       decryptedBody.action === "data_exchange" &&
@@ -98,7 +92,8 @@ app.post("/", async (req, res) => {
       await appointmentsCollection.insertOne(appointmentData);
       console.log("Appointment saved:", appointmentData);
 
-      const successResponse = {
+      // Prepare response
+      return res.send({
         screen: "SUCCESS",
         data: {
           extension_message_response: {
@@ -109,21 +104,14 @@ app.post("/", async (req, res) => {
             },
           },
         },
-      };
-
-      return res.send(
-        encryptResponse(successResponse, aesKeyBuffer, initialVectorBuffer)
-      );
+      });
     }
 
     // Handle other actions
-    const fallbackResponse = {
+    return res.send({
       screen: "SCHEDULE",
       data: {},
-    };
-    return res.send(
-      encryptResponse(fallbackResponse, aesKeyBuffer, initialVectorBuffer)
-    );
+    });
   } catch (error) {
     console.error("Processing error:", error);
     return res.status(500).send();
@@ -133,35 +121,9 @@ app.post("/", async (req, res) => {
 });
 
 app.get("/", (req, res) => {
-  res.send(`<pre>Nothing to see here.
-Checkout README.md to start.</pre>`);
+  res.send("Appointment Booking Service");
 });
 
 app.listen(PORT, () => {
-  console.log(`Server is listening on port: ${PORT}`);
+  console.log(`Server listening on port ${PORT}`);
 });
-
-function isRequestSignatureValid(req) {
-  if (!APP_SECRET) {
-    console.warn(
-      "App Secret is not set up. Please Add your app secret in /.env file to check for request validation"
-    );
-    return true;
-  }
-
-  const signatureHeader = req.get("x-hub-signature-256");
-  const signatureBuffer = Buffer.from(
-    signatureHeader.replace("sha256=", ""),
-    "utf-8"
-  );
-
-  const hmac = crypto.createHmac("sha256", APP_SECRET);
-  const digestString = hmac.update(req.rawBody).digest("hex");
-  const digestBuffer = Buffer.from(digestString, "utf-8");
-
-  if (!crypto.timingSafeEqual(digestBuffer, signatureBuffer)) {
-    console.error("Error: Request Signature did not match");
-    return false;
-  }
-  return true;
-}
