@@ -1,4 +1,6 @@
 // flow.js
+
+import { getDb } from "./db";
 const SCREEN_RESPONSES = {
   SCHEDULE: {
     screen: "SCHEDULE",
