@@ -1,5 +1,5 @@
 // flow.js
-
+import { getFirestore, collection, addDoc } from "firebase/firestore";
 // import { getDb } from "./db.js";
 
 const SCREEN_RESPONSES = {
@@ -41,10 +41,9 @@ const SCREEN_RESPONSES = {
 
 export const getNextScreen = async (decryptedBody) => {
   const getDb = async () => {
-    const dbModule = await import("./db.js");
+    const dbModule = await import("./firebase.js");
     return dbModule.getDb();
   };
-
   const { screen, data, version, action, flow_token } = decryptedBody;
 
   // Handle health check
@@ -78,7 +77,7 @@ export const getNextScreen = async (decryptedBody) => {
       case "SCHEDULE":
         try {
           const db = getDb();
-          const appointmentsCollection = db.collection("appointments");
+          const appointmentsRef = collection(db, "appointments");
 
           // Map time slot to actual time
           const timeSlot = SCREEN_RESPONSES.SCHEDULE.data.appointment_time.find(
@@ -91,13 +90,13 @@ export const getNextScreen = async (decryptedBody) => {
             appointment_date: data.appointment_date,
             appointment_time: timeSlot ? timeSlot.title : data.appointment_time,
             notes: data.notes || "No additional notes provided.",
-            created_at: new Date(),
+            created_at: new Date().toISOString(),
             flow_token: flow_token,
             status: "pending",
           };
 
-          await appointmentsCollection.insertOne(appointmentData);
-          console.log("Appointment saved to database:", appointmentData);
+          await addDoc(appointmentsRef, appointmentData);
+          console.log("Appointment saved to Firestore:", appointmentData);
 
           const locationText =
             data.appointment_type === "online"

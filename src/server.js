@@ -1,12 +1,16 @@
-import express from "express";
+// server.js
+import express from "express"; // Keep this import
 import crypto from "crypto";
 import dotenv from "dotenv";
-import { connectToDatabase } from "./db.js";
+import { getDb } from "./firebase.js";
+import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
+import { decryptRequest, encryptResponse } from "./encryption.js";
+import { getNextScreen } from "./flow.js";
 
 dotenv.config();
 
 const app = express();
-const { APP_SECRET, PRIVATE_KEY, PORT = "3000" } = process.env;
+const { APP_SECRET, PRIVATE_KEY, PASSPHRASE, PORT = "3000" } = process.env;
 
 // Middleware for parsing JSON and capturing raw body
 app.use(
@@ -42,7 +46,72 @@ function isRequestSignatureValid(req) {
   return crypto.timingSafeEqual(digestBuffer, signatureBuffer);
 }
 
-// Main Request Handler
+// Endpoint to handle appointments
+app.post("/appointments", async (req, res) => {
+  try {
+    const { decryptedBody, aesKeyBuffer, initialVectorBuffer } = decryptRequest(
+      req.body,
+      PRIVATE_KEY,
+      PASSPHRASE
+    );
+
+    const response = await getNextScreen(decryptedBody);
+    const encryptedResponse = encryptResponse(
+      response,
+      aesKeyBuffer,
+      initialVectorBuffer
+    );
+
+    // Save appointment data to Firestore
+    if (
+      decryptedBody.action === "data_exchange" &&
+      decryptedBody.screen === "SCHEDULE"
+    ) {
+      const db = getDb();
+      const appointmentsRef = collection(db, "appointments");
+
+      const appointmentData = {
+        appointment_type: decryptedBody.data.appointment_type,
+        gender: decryptedBody.data.gender,
+        appointment_date: decryptedBody.data.appointment_date,
+        appointment_time: decryptedBody.data.appointment_time,
+        notes: decryptedBody.data.notes || "No additional notes provided.",
+        created_at: new Date().toISOString(),
+        flow_token: decryptedBody.flow_token,
+        status: "pending",
+      };
+
+      await addDoc(appointmentsRef, appointmentData);
+      console.log("Appointment saved to Firestore:", appointmentData);
+    }
+
+    res.json({ encrypted_response: encryptedResponse });
+  } catch (error) {
+    console.error("Error processing appointment:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Endpoint to get all appointments
+app.get("/appointments", async (req, res) => {
+  try {
+    const db = getDb();
+    const appointmentsRef = collection(db, "appointments");
+    const appointmentsSnapshot = await getDocs(appointmentsRef);
+
+    const appointments = [];
+    appointmentsSnapshot.forEach((doc) => {
+      appointments.push({ id: doc.id, ...doc.data() });
+    });
+
+    res.json(appointments);
+  } catch (error) {
+    console.error("Error fetching appointments:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Main WhatsApp Flow endpoint
 app.post("/", async (req, res) => {
   if (!PRIVATE_KEY) {
     return res.status(500).send("Private key is missing");
@@ -53,92 +122,50 @@ app.post("/", async (req, res) => {
   }
 
   try {
-    const decryptedBody = JSON.parse(req.rawBody);
+    const { decryptedBody, aesKeyBuffer, initialVectorBuffer } = decryptRequest(
+      req.body,
+      PRIVATE_KEY,
+      PASSPHRASE
+    );
 
-    if (
-      decryptedBody.action === "data_exchange" &&
-      decryptedBody.screen === "SCHEDULE"
-    ) {
-      const db = await connectToDatabase(); // Ensure MongoDB is connected
-      const appointmentsCollection = db.collection("appointments");
+    const response = await getNextScreen(decryptedBody);
+    const encryptedResponse = encryptResponse(
+      response,
+      aesKeyBuffer,
+      initialVectorBuffer
+    );
 
-      const appointmentData = {
-        appointment_type: decryptedBody.data.appointment_type,
-        gender: decryptedBody.data.gender,
-        appointment_date: decryptedBody.data.appointment_date,
-        appointment_time: decryptedBody.data.appointment_time,
-        notes: decryptedBody.data.notes || "No additional notes",
-        created_at: new Date(),
-        flow_token: decryptedBody.flow_token,
-        status: "pending",
-      };
-
-      await appointmentsCollection.insertOne(appointmentData);
-      console.log("Appointment saved:", appointmentData);
-
-      return res.send({
-        screen: "SUCCESS",
-        data: {
-          extension_message_response: {
-            params: {
-              flow_token: decryptedBody.flow_token,
-              appointment_confirmed: true,
-              message: `Appointment scheduled for ${appointmentData.appointment_date} at ${appointmentData.appointment_time}`,
-            },
-          },
-        },
-      });
-    }
-
-    return res.send({
-      screen: "SCHEDULE",
-      data: {},
-    });
+    res.json({ encrypted_response: encryptedResponse });
   } catch (error) {
     console.error("Processing error:", error);
+    if (error.statusCode) {
+      return res.status(error.statusCode).send();
+    }
     return res.status(500).send();
   }
 });
 
-app.get("/", async (req, res) => {
+// Health check endpoint
+app.get("/health", async (req, res) => {
   try {
-    const db = await connectToDatabase();
-    const isConnected = db
-      ? "Connected to MongoDB!"
-      : "Not connected to MongoDB";
-    res.send(`Appointment Booking Service - ${isConnected}`);
+    const db = getDb();
+    const appointmentsRef = collection(db, "appointments");
+    await getDocs(
+      query(appointmentsRef, where("status", "==", "pending")).limit(1)
+    );
+    res.json({ status: "healthy", database: "connected" });
   } catch (error) {
-    res.send("Appointment Booking Service - MongoDB connection failed.");
+    console.error("Health check error:", error);
+    res.status(500).json({ status: "unhealthy", error: error.message });
   }
 });
 
-// Connect to MongoDB and insert dummy data
-connectToDatabase()
-  .then(async (db) => {
-    console.log("MongoDB connection established successfully.");
+// Root endpoint
+app.get("/", (req, res) => {
+  res.send("WhatsApp Flow Appointment Booking Service - Running");
+});
 
-    // Create dummy data
-    const appointmentsCollection = db.collection("appointments");
-    const dummyData = {
-      appointment_type: "online",
-      gender: "female",
-      appointment_date: "2023-10-01",
-      appointment_time: "10:00 AM",
-      notes: "Initial dummy appointment",
-      created_at: new Date(),
-      flow_token: "dummy_flow_token",
-      status: "pending",
-    };
-
-    // Insert dummy data
-    await appointmentsCollection.insertOne(dummyData);
-    console.log("Dummy appointment data inserted:", dummyData);
-
-    app.listen(PORT, () => {
-      console.log(`Server listening on port ${PORT}`);
-    });
-  })
-  .catch((error) => {
-    console.error("Failed to connect to MongoDB:", error.message);
-    process.exit(1); // Exit the process if the connection fails
-  });
+// Start the server
+app.listen(PORT, () => {
+  console.log(`Server listening on port ${PORT}`);
+});
